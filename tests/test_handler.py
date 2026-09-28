@@ -145,3 +145,31 @@ def test_concurrency_from_env(monkeypatch):
     assert handler.concurrency(1) == 2
     monkeypatch.setenv("LAYA_CONCURRENCY", "0")
     assert handler.concurrency(1) == handler.DEFAULT_CONCURRENCY
+
+
+def test_job_fetcher_takes_one_job_per_request(monkeypatch):
+    import asyncio
+    from runpod.serverless.modules import rp_job, rp_scale
+
+    asked = []
+
+    async def fake_get_job(session, num_jobs=1):
+        asked.append(num_jobs)
+        return [{"id": "j", "input": {}}]
+
+    monkeypatch.setattr(rp_job, "get_job", fake_get_job)
+    monkeypatch.setattr(rp_scale, "get_job", fake_get_job)
+    assert handler.take_one_job_per_request()
+    assert asyncio.run(rp_scale.get_job(None, 4)) == [{"id": "j", "input": {}}]
+    assert asked == [1]
+
+
+def test_job_fetcher_patch_skips_an_unknown_sdk_layout(monkeypatch):
+    from runpod.serverless.modules import rp_scale
+
+    async def other(session, num_jobs=1):
+        return None
+
+    monkeypatch.setattr(rp_scale, "get_job", other)
+    assert handler.take_one_job_per_request() is False
+    assert rp_scale.get_job is other

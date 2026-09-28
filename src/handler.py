@@ -176,6 +176,8 @@ def _health() -> Dict[str, Any]:
             devices[name] = device
     return {
         "status": "ok",
+        "revision": os.environ.get("LAYA_RUNPOD_REVISION"),
+        "concurrency": concurrency(1),
         "laya_version": laya.__version__,
         "torch_version": torch.__version__,
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
@@ -230,8 +232,31 @@ def concurrency(_current: int) -> int:
     return _env_int("LAYA_CONCURRENCY", DEFAULT_CONCURRENCY)
 
 
+def take_one_job_per_request() -> bool:
+    """Make the SDK fetch jobs one at a time even though the worker holds several slots.
+
+    With free slots > 1 the SDK asks the batch job-take API for that many jobs, and RunPod
+    starts the execution clock before that call returns: +~80 ms per job on the same GPU and
+    datacenter (A4500, EU-RO-1: 235 -> 315 ms p50). The single-job API has no such wait, and the
+    fetch loop re-polls straight away while slots remain, so the prefetch is kept. JobScaler
+    reads `rp_scale.get_job` when it is constructed; runpod is pinned in requirements.txt.
+    """
+    from runpod.serverless.modules import rp_job, rp_scale
+
+    if getattr(rp_scale, "get_job", None) is not rp_job.get_job:
+        _log.warning("runpod SDK layout changed; leaving its batch job-take in place")
+        return False
+
+    async def get_one_job(session, num_jobs: int = 1):
+        return await rp_job.get_job(session, 1)
+
+    rp_scale.get_job = get_one_job
+    return True
+
+
 if __name__ == "__main__":
     import runpod
 
     init()
+    take_one_job_per_request()
     runpod.serverless.start({"handler": async_handler, "concurrency_modifier": concurrency})

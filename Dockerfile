@@ -45,6 +45,10 @@ ENV LAYA_DEVICE=cuda \
     TORCH_DISABLE_NATIVE_JIT=1 \
     HF_HUB_OFFLINE=1
 
+# Reported by the `health` action, so a benchmark can tell which build answered.
+ARG GIT_SHA=dev
+ENV LAYA_RUNPOD_REVISION=${GIT_SHA}
+
 COPY src/handler.py ./
 COPY test_input.json ./
 
