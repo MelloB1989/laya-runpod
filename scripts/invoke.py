@@ -24,7 +24,9 @@ DONE = {"COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"}
 def call(key, method, url, body=None, timeout=120):
     req = urllib.request.Request(url, method=method,
                                  data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+                                 headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
+                                          # Cloudflare refuses the default Python-urllib agent (1010).
+                                          "User-Agent": "laya-runpod/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read())

@@ -47,7 +47,9 @@ def call(key: str, method: str, path: str, body=None):
     req = urllib.request.Request(
         API + path, method=method,
         data=None if body is None else json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
+                 # Cloudflare in front of RunPod refuses the default Python-urllib agent (error 1010).
+                 "User-Agent": "laya-runpod/1.0"},
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:

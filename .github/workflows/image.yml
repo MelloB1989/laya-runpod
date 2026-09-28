@@ -7,6 +7,8 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    # Client-side files never reach the image.
+    paths-ignore: ["README.md", "scripts/deploy.py", "scripts/invoke.py"]
   workflow_dispatch:
 
 permissions:
