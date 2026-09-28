@@ -105,15 +105,26 @@ to match the cu128 wheels. Worker env overrides go through `--env KEY=VALUE`, e.
 `--env LAYA_MODELS=english,multilingual` to load only two checkpoints, or
 `--env LAYA_CUDA_AMP=fp16`.
 
-Latency measured on the first deployment (RTX 4090 worker, all three checkpoints resident):
+Latency on a warm worker (`scripts/bench.py`, `test_input.json` = 3 questions; build `243f75f`,
+RTX PRO 6000 MIG 24 GB in the US, client in India). "Server" is RunPod's own queue + execution time
+per job; the client round trip adds the trip to RunPod's API origin, about 250 ms from India.
 
-| | end to end |
-|---|---|
-| warm worker | ~1 s round trip, 75-400 ms execution |
-| cold start, image already on the host (FlashBoot) | ~18 s |
-| first job on a host that has never pulled the image | ~8 min (a one-time ~7 GB pull) |
+| scenario | server p50 / p95 | client round trip p95 |
+|---|---|---|
+| one client, back to back | 250 / 294 ms | 633 ms |
+| one request every ~1.5 s | 251 / 312 ms | ~1.2 s (tail is network; server p95 unchanged) |
+| 4 concurrent clients, 1 worker | 393 / 1379 ms (4.1 req/s) | 1780 ms |
+| cold start, image already on the host (FlashBoot) | ~18 s | |
+| first job on a host that has never pulled the image | 8-15 min (one-time ~7 GB pull) | |
 
-Set `--workers-min 1` if the 18 s cold start matters. That worker is billed while idle.
+The model's forward pass is ~20-50 ms of each job depending on the GPU (compare a `route` job,
+which skips it); the rest is RunPod's queue plumbing. For less queueing under concurrent load,
+lower the scale-up threshold (`--scaler-value 1`) so a second worker starts sooner, or keep one
+warm with `--workers-min 1` (billed while idle).
+
+Updating the image: RunPod rolls workers over gradually, and a FlashBoot worker on the old image
+can keep taking jobs for a long time. The `health` action reports the build `revision`, so check it
+before benchmarking a new build.
 
 Calling the endpoint directly:
 
