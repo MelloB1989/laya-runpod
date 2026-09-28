@@ -104,6 +104,16 @@ to match the cu128 wheels. Worker env overrides go through `--env KEY=VALUE`, e.
 `--env LAYA_MODELS=english,multilingual` to load only two checkpoints, or
 `--env LAYA_CUDA_AMP=fp16`.
 
+Latency measured on the first deployment (RTX 4090 worker, all three checkpoints resident):
+
+| | end to end |
+|---|---|
+| warm worker | ~1 s round trip, 75-400 ms execution |
+| cold start, image already on the host (FlashBoot) | ~18 s |
+| first job on a host that has never pulled the image | ~8 min (a one-time ~7 GB pull) |
+
+Set `--workers-min 1` if the 18 s cold start matters. That worker is billed while idle.
+
 Calling the endpoint directly:
 
 ```bash
