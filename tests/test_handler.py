@@ -131,3 +131,17 @@ def test_warmup_runs_each_loaded_checkpoint(monkeypatch):
     fake = FakeRouter()
     handler.init(fake)
     assert [c[3]["model"] for c in fake.calls] == ["english"]
+
+
+def test_async_handler_runs_the_same_handler(router):
+    import asyncio
+    out = asyncio.run(handler.async_handler({"id": "job-2", "input": {"state": "x", "questions": QUESTIONS}}))
+    assert out["answers"] == {"dept": {"type": "choice"}}
+
+
+def test_concurrency_from_env(monkeypatch):
+    assert handler.concurrency(1) == handler.DEFAULT_CONCURRENCY
+    monkeypatch.setenv("LAYA_CONCURRENCY", "2")
+    assert handler.concurrency(1) == 2
+    monkeypatch.setenv("LAYA_CONCURRENCY", "0")
+    assert handler.concurrency(1) == handler.DEFAULT_CONCURRENCY

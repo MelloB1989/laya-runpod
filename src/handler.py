@@ -16,13 +16,16 @@ become `{"error": "<status>: <detail>"}`, which RunPod reports as a FAILED job.
 Configuration is laya-serve's environment (LAYA_DEVICE, LAYA_MODELS, LAYA_PRELOAD, LAYA_THREADS,
 LAYA_AUTO_TASK, LAYA_MAX_LOADED, LAYA_MAX_TOKEN_BUDGET) plus:
 
-    LAYA_WARMUP      run one tiny prediction per loaded checkpoint at boot (default 1)
-    LAYA_MAX_BATCH   cap on `requests` per batch job (default 256)
+    LAYA_WARMUP       run one tiny prediction per loaded checkpoint at boot (default 1)
+    LAYA_MAX_BATCH    cap on `requests` per batch job (default 256)
+    LAYA_CONCURRENCY  jobs a worker holds at once (default 4); they still run one at a time
 """
+import asyncio
 import logging
 import math
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
@@ -34,6 +37,7 @@ logging.basicConfig(level=os.environ.get("LAYA_LOG_LEVEL", "INFO").upper(),
 _log = logging.getLogger("laya.runpod")
 
 DEFAULT_MAX_BATCH = 256
+DEFAULT_CONCURRENCY = 4
 
 # Built once per worker by `init()`, before the first job; tests assign a fake directly.
 _router = None
@@ -210,8 +214,24 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": "500: inference failed"}
 
 
+# One forward pass at a time, off the event loop. A sync handler would run on the SDK's loop, and
+# at concurrency 1 the SDK's job fetcher sleeps a fixed second while a job is in flight
+# (runpod/serverless/modules/rp_scale.py), so a job arriving just after the last one finished
+# waited out the rest of that second: ~0.9 s of queue delay back to back, ~1 job/s per worker
+# under load. Holding several job slots keeps a job-take poll open while the GPU computes.
+_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="laya-infer")
+
+
+async def async_handler(job: Dict[str, Any]) -> Dict[str, Any]:
+    return await asyncio.get_running_loop().run_in_executor(_pool, handler, job)
+
+
+def concurrency(_current: int) -> int:
+    return _env_int("LAYA_CONCURRENCY", DEFAULT_CONCURRENCY)
+
+
 if __name__ == "__main__":
     import runpod
 
     init()
-    runpod.serverless.start({"handler": handler})
+    runpod.serverless.start({"handler": async_handler, "concurrency_modifier": concurrency})

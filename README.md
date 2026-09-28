@@ -12,6 +12,7 @@ Dockerfile              python:3.11-slim + torch 2.11 cu128 + laya 0.3.21 + bake
 scripts/bake_models.py  image-build step that downloads and test-loads the checkpoints
 scripts/deploy.py       create/update the RunPod template + endpoint over the REST API
 scripts/invoke.py       send a job to the endpoint from the terminal
+scripts/bench.py        latency percentiles (round trip, queue, execution) against the endpoint
 tests/                  handler contract tests (fake router, no weights needed)
 .github/workflows/      test, then build and push ghcr.io/<owner>/<repo>
 ```
@@ -133,6 +134,7 @@ curl -s https://api.runpod.ai/v2/$ENDPOINT_ID/runsync \
 | `LAYA_AUTO_TASK` | `0` | auto-route typed-decisions workflows to that checkpoint |
 | `LAYA_MAX_TOKEN_BUDGET` | `8192` | cap on per-request `max_len` / `head_max_len` |
 | `LAYA_MAX_BATCH` | `256` | cap on `requests` per batch job |
+| `LAYA_CONCURRENCY` | `4` | jobs a worker holds at once; they still run one at a time on the GPU, but the worker fetches the next job while the current one computes |
 | `LAYA_CUDA_AMP` | checkpoint's own | `fp16` or `bf16` autocast |
 | `HF_HUB_OFFLINE` | `1` | the baked cache is complete; set to `0` if you bake nothing |
 
